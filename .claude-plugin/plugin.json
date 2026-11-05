@@ -1,6 +1,6 @@
 {
   "name": "shorts-cutter",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Turn a long video into vertical 9:16 clips with face tracking and word-by-word captions. Runs locally with ffmpeg, yt-dlp and faster-whisper.",
   "author": { "name": "kirillk_ai" },
   "license": "MIT",
