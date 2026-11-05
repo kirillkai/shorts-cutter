@@ -8,6 +8,12 @@ Writes to OUTDIR:
   segments.json   [[start, end, text], ...]
   transcript.txt  one line per segment: [mm:ss.s - mm:ss.s] text   (this is what Claude reads to pick clips)
 """
+import os as _os, sys as _sys
+_VENV = _os.path.expanduser("~/.shorts-cutter-venv")
+_PY = _os.path.join(_VENV, "bin", "python")
+if _os.path.exists(_PY) and _os.path.realpath(_sys.prefix) != _os.path.realpath(_VENV):
+    _os.execv(_PY, [_PY] + _sys.argv)  # always run inside the shorts-cutter venv once setup.sh has made it
+
 import argparse
 import json
 import os
@@ -27,7 +33,10 @@ ap.add_argument("--language", default=None, help="e.g. en, ru. Default: auto-det
 a = ap.parse_args()
 os.makedirs(a.outdir, exist_ok=True)
 
-from faster_whisper import WhisperModel
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    _sys.exit("faster-whisper is missing. Run scripts/setup.sh once, then try again.")
 
 with tempfile.TemporaryDirectory() as tmp:
     wav = os.path.join(tmp, "a.wav")

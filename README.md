@@ -18,14 +18,14 @@ In Claude Code:
 ```
 Or copy `skills/shorts-cutter` into `~/.claude/skills/`.
 
-Then install the tools once (Mac):
-```
-brew install ffmpeg yt-dlp
-pip install faster-whisper "opencv-python-headless>=4.8,<5"
-```
-If pip says "externally-managed-environment", ask Claude to set up a venv. The skill knows how.
+In Claude Cowork or the Claude app: download [`shorts-cutter-skill.zip`](shorts-cutter-skill.zip) and upload it under Skills in Claude's settings. Then connect the folder with your video.
 
-On Windows, use `winget install ffmpeg` and `pip install yt-dlp`. On Linux, use `sudo apt install ffmpeg` and `pip install yt-dlp`.
+On the first run Claude sets up the tools for you: ffmpeg, deno and a private Python environment in `~/.shorts-cutter-venv`. That takes about 5 minutes, once. On a Mac you only need [Homebrew](https://brew.sh). To do it yourself instead, run `bash skills/shorts-cutter/scripts/setup.sh`.
+
+Where it works:
+- **Claude Code**: everything, including YouTube links.
+- **Claude Cowork** (desktop app, with a folder connected): put the video file in that folder. Links work only if your network settings allow YouTube. The first run downloads a speech model (about 490 MB) into `shorts/.models` in that folder, once.
+- **A plain web chat**: not supported. The video is processed on your computer.
 
 ## Use
 
@@ -37,7 +37,7 @@ Claude checks your setup, downloads and transcribes the video, shows you the cli
 
 ## Good to know
 - Clip only videos you own, have permission to use, or that a creator's clipping program allows.
-- The first run downloads the speech model once. That takes a few minutes. After that it runs offline.
+- The first run downloads the speech model once. That takes a few minutes. After that it works offline.
 - If captions are missing, your ffmpeg has no libass. Run `brew reinstall ffmpeg`.
 
 MIT license.

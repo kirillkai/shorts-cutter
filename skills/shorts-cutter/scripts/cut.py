@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """Render vertical 9:16 clips with face tracking and word-by-word captions.
 
-usage: python3 cut.py SOURCE CLIPS_JSON WORDS_JSON OUTDIR [--no-captions] [--no-track]
+usage: python3 cut.py SOURCE CLIPS_JSON WORDS_JSON OUTDIR [--no-captions] [--no-track] [--budget SECONDS] [--fast]
+
+Clips that are already rendered are skipped, so it is safe to run again. With --budget it stops before the
+next clip when time runs low and exits with code 3 ("run the same command again").
 
 CLIPS_JSON: [{"start": 12.3, "end": 48.0, "title": "...", "hook": "..."}, ...]   (seconds)
 WORDS_JSON: [[word, start, end], ...]   (from transcribe.py)
 """
+import os as _os, sys as _sys
+_VENV = _os.path.expanduser("~/.shorts-cutter-venv")
+_PY = _os.path.join(_VENV, "bin", "python")
+if _os.path.exists(_PY) and _os.path.realpath(_sys.prefix) != _os.path.realpath(_VENV):
+    _os.execv(_PY, [_PY] + _sys.argv)  # always run inside the shorts-cutter venv once setup.sh has made it
+
 import argparse
 import json
 import os
@@ -22,19 +31,24 @@ ap.add_argument("outdir")
 ap.add_argument("--no-captions", action="store_true")
 ap.add_argument("--no-track", action="store_true", help="center crop instead of following the face")
 ap.add_argument("--font", default="Arial", help="caption font name installed on this computer")
+ap.add_argument("--budget", type=float, default=0, help="stop before the next clip after about this many seconds")
+ap.add_argument("--fast", action="store_true", help="faster x264 preset (slightly bigger files)")
 a = ap.parse_args()
+import time
+T0 = time.time()
 os.makedirs(a.outdir, exist_ok=True)
 
 
 def probe(path):
-    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                          "stream=width,height:stream_side_data=rotation:format=duration", "-of", "json", path],
-                         capture_output=True, text=True).stdout
+    # -show_streams/-show_format work on old (4.x) and new ffprobe alike
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_streams", "-show_format",
+                          "-of", "json", path], capture_output=True, text=True).stdout
     j = json.loads(out); st = j["streams"][0]
     w, h = st["width"], st["height"]
-    rot = 0
+    rot = abs(int(float((st.get("tags") or {}).get("rotate", 0) or 0)))
     for sd in st.get("side_data_list", []) or []:
-        rot = abs(int(sd.get("rotation", 0) or 0))
+        if "rotation" in sd:
+            rot = abs(int(float(sd["rotation"] or 0)))
     if rot in (90, 270): w, h = h, w
     return w, h, float(j["format"]["duration"])
 
@@ -128,7 +142,18 @@ for i, c in enumerate(clips, 1):
     s, e = max(0.0, float(c["start"])), min(dur, float(c["end"]))
     title = c.get("title", f"clip {i}")
     name = f"{i:02d}_{slug(title)}.mp4"
-    print(f"[{i}/{len(clips)}] {title}  {s:.1f}-{e:.1f}s")
+    report += [f"## {i}. {title}", f"- file: {name}", f"- source: {s:.1f}s to {e:.1f}s ({e - s:.0f}s)",
+               f"- hook: {c.get('hook', '')}", ""]
+    final = os.path.join(a.outdir, name)
+    if os.path.exists(final):
+        print(f"[{i}/{len(clips)}] {title}  already rendered")
+        continue
+    # a clip takes roughly 1.5-3x its length to render on a laptop; stop early rather than get cut off
+    if a.budget and time.time() - T0 + (e - s) * (1.5 if a.fast else 3) > a.budget:
+        open(os.path.join(a.outdir, "clips.md"), "w").write("\n".join(report))
+        print(f"NOT FINISHED: {i - 1} of {len(clips)} clips done. Run the same command again to continue.")
+        raise SystemExit(3)
+    print(f"[{i}/{len(clips)}] {title}  {s:.1f}-{e:.1f}s", flush=True)
     with tempfile.TemporaryDirectory() as tmp:
         if vertical:
             vf = f"scale={W_OUT}:{H_OUT}:force_original_aspect_ratio=decrease,pad={W_OUT}:{H_OUT}:(ow-iw)/2:(oh-ih)/2,setsar=1"
@@ -141,10 +166,9 @@ for i, c in enumerate(clips, 1):
                 vf += f",subtitles={ass}"
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{s:.3f}", "-to", f"{e:.3f}", "-i", a.source,
                         "-vf", vf, "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-r", "30",
-                        "-c:v", "libx264", "-crf", "20", "-preset", "medium", "-pix_fmt", "yuv420p",
-                        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-                        os.path.join(a.outdir, name)], check=True)
-    report += [f"## {i}. {title}", f"- file: {name}", f"- source: {s:.1f}s to {e:.1f}s ({e - s:.0f}s)",
-               f"- hook: {c.get('hook', '')}", ""]
+                        "-c:v", "libx264", "-crf", "20", "-preset", "veryfast" if a.fast else "medium",
+                        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+                        "-f", "mp4", final + ".part"], check=True)
+        os.replace(final + ".part", final)
 open(os.path.join(a.outdir, "clips.md"), "w").write("\n".join(report))
-print(f"\nDone: {len(clips)} clips in {a.outdir}")
+print(f"\nDONE: {len(clips)} clips in {a.outdir}")
