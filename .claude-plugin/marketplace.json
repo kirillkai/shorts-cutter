@@ -1,0 +1,11 @@
+{
+  "name": "shorts-cutter",
+  "owner": { "name": "kirillk_ai" },
+  "plugins": [
+    {
+      "name": "shorts-cutter",
+      "source": "./",
+      "description": "Turn a long video into vertical 9:16 clips with face tracking and word-by-word captions."
+    }
+  ]
+}
